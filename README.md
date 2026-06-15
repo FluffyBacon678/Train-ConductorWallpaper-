@@ -1,12 +1,12 @@
 # Rail Drift Wallpaper
 
-An animated high top-down train wallpaper for Wallpaper Engine. The railway is a loop-safe dynamic network: stations are graph nodes, tracks are graph edges, and every active main route has a return path.
+An animated high top-down train wallpaper for Wallpaper Engine. The map now reads more like a tiny Earth-atlas view, with varied land biomes, a slim northern coastline, narrow rivers, small lakes, and boats moving through the waterways. The railway is a loop-safe dynamic network: stations are graph nodes, tracks are graph edges, and every active main route has a return path.
 
 Tracks appear in stages: survey marks, construction, active rails, then optional dismantling. Trains bias toward longer station-to-station routes across the currently active network, stop briefly at stations, then choose new far destinations. Each track now behaves like a tiny two-lane corridor, so opposite-direction trains can pass. A forgiving signal system slows or briefly holds trains when another train is too close ahead, then lets traffic creep through so the wallpaper never deadlocks.
 
 Roads, boat lanes, and rails are visually separated and scaled for a farther-away map view. Rail-road intersections become underpasses/crossings, rail-over-water spans get short bridge decks and guard rails, and boats run underneath the bridge layer instead of fighting the trains for the same space.
 
-The generator keeps scenery off water, clears trees and buildings away from rail corridors, rejects long water crossings, and filters out messy rail overlaps so tracks read like an organized miniature transport map instead of a tangle.
+The generator keeps scenery off water, clears trees, buildings, and freight yards away from rail corridors, rejects long water crossings, and filters out messy rail overlaps so tracks read like an organized miniature transport map instead of a tangle.
 
 ## Run Locally
 

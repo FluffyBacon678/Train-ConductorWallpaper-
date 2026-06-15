@@ -280,27 +280,28 @@
   }
 
   function buildBoatRoutes(w, h) {
+    const coastStops = [0.04, 0.24, 0.47, 0.72, 0.96].map((xFactor) => {
+      const x = w * xFactor;
+      return { x, y: atlasCoastlineY(x) * 0.48 };
+    });
+    const mainRiverStops = [];
+    for (let i = 0; i <= 5; i += 1) {
+      const y = h * (0.09 + i * 0.19);
+      mainRiverStops.push({ x: atlasMainRiverX(y), y });
+    }
+    const tributaryStops = [0.05, 0.18, 0.32, 0.46, 0.55].map((xFactor) => {
+      const x = w * xFactor;
+      return { x, y: atlasTributaryY(x) };
+    });
+
     state.boatRoutes = [
       makeBoatRoute([
-        { x: -w * 0.04, y: h * 0.09 },
-        { x: w * 0.18, y: h * 0.10 },
-        { x: w * 0.42, y: h * 0.12 },
-        { x: w * 0.70, y: h * 0.18 },
-        { x: w * 1.04, y: h * 0.12 }
-      ], 18),
-      makeBoatRoute([
-        { x: w * 0.52, y: h * 0.18 },
-        { x: w * 0.54, y: h * 0.36 },
-        { x: w * 0.58, y: h * 0.58 },
-        { x: w * 0.53, y: h * 0.82 },
-        { x: w * 0.43, y: h * 1.08 }
-      ], 13),
-      makeBoatRoute([
-        { x: w * 1.04, y: h * 0.24 },
-        { x: w * 0.82, y: h * 0.27 },
-        { x: w * 0.67, y: h * 0.34 },
-        { x: w * 0.54, y: h * 0.45 }
-      ], 12)
+        { x: -w * 0.04, y: coastStops[0].y },
+        ...coastStops,
+        { x: w * 1.04, y: coastStops[coastStops.length - 1].y }
+      ], 15),
+      makeBoatRoute(mainRiverStops, 10),
+      makeBoatRoute(tributaryStops, 8)
     ];
   }
 
@@ -311,11 +312,11 @@
   }
 
   function makeYardRects() {
-    const footprint = clamp(0.56 + worldScale() * 0.35, 0.68, 0.94);
+    const footprint = clamp(0.48 + worldScale() * 0.24, 0.56, 0.74);
     return [
-      makeRectZone(0.14, 0.25, 0.21 * footprint, 0.14 * footprint),
-      makeRectZone(0.68, 0.24, 0.28 * footprint, 0.17 * footprint),
-      makeRectZone(0.48, 0.68, 0.18 * footprint, 0.14 * footprint)
+      makeRectZone(0.13, 0.145, 0.16 * footprint, 0.085 * footprint),
+      makeRectZone(0.73, 0.115, 0.20 * footprint, 0.09 * footprint),
+      makeRectZone(0.43, 0.80, 0.145 * footprint, 0.085 * footprint)
     ];
   }
 
@@ -333,6 +334,65 @@
       return false;
     }
     return state.scenery.every((item) => Math.hypot(item.x - x, item.y - y) > 10);
+  }
+
+  function atlasMinDim() {
+    return Math.max(1, Math.min(state.width, state.height));
+  }
+
+  function atlasCoastlineY(x) {
+    const w = Math.max(1, state.width);
+    const h = Math.max(1, state.height);
+    const t = clamp(x / w, 0, 1);
+    const westGulf = 0.038 * Math.exp(-1 * (((t - 0.14) / 0.105) ** 2));
+    const eastBay = 0.062 * Math.exp(-1 * (((t - 0.86) / 0.095) ** 2));
+    const ripple = 0.012 * Math.sin(t * TAU * 1.6 + 0.55) + 0.008 * Math.sin(t * TAU * 4.4 + 1.2);
+    return h * clamp(0.052 + westGulf + eastBay + ripple, 0.034, 0.145);
+  }
+
+  function atlasMainRiverX(y) {
+    const h = Math.max(1, state.height);
+    const w = Math.max(1, state.width);
+    const t = clamp(y / h, 0, 1);
+    return w * (0.515 + 0.035 * Math.sin(t * TAU * 1.05 + 0.66) + 0.018 * Math.sin(t * TAU * 2.65 + 2.1));
+  }
+
+  function atlasMainRiverHalfWidth(y) {
+    const t = clamp(y / Math.max(1, state.height), 0, 1);
+    return atlasMinDim() * (0.014 + 0.009 * Math.sin(t * Math.PI) ** 2);
+  }
+
+  function atlasTributaryY(x) {
+    const w = Math.max(1, state.width);
+    const h = Math.max(1, state.height);
+    const t = clamp(x / w, 0, 1);
+    return h * (0.565 + 0.026 * Math.sin(t * TAU * 1.25 + 1.35) + 0.012 * Math.sin(t * TAU * 3.3));
+  }
+
+  function atlasTributaryHalfWidth(x) {
+    const t = clamp(x / Math.max(1, state.width), 0, 1);
+    return atlasMinDim() * (0.008 + 0.004 * Math.sin(t * Math.PI));
+  }
+
+  function atlasLakes() {
+    const w = Math.max(1, state.width);
+    const h = Math.max(1, state.height);
+    const s = atlasMinDim();
+    return [
+      { x: w * 0.185, y: h * 0.365, rx: s * 0.036, ry: s * 0.019, angle: -0.25 },
+      { x: w * 0.815, y: h * 0.315, rx: s * 0.033, ry: s * 0.020, angle: 0.32 },
+      { x: w * 0.705, y: h * 0.785, rx: s * 0.027, ry: s * 0.015, angle: -0.34 }
+    ];
+  }
+
+  function pointInLake(point, lake, padding = 0) {
+    const cos = Math.cos(-lake.angle);
+    const sin = Math.sin(-lake.angle);
+    const dx = point.x - lake.x;
+    const dy = point.y - lake.y;
+    const x = dx * cos - dy * sin;
+    const y = dx * sin + dy * cos;
+    return (x * x) / ((lake.rx + padding) ** 2) + (y * y) / ((lake.ry + padding) ** 2) <= 1;
   }
 
   function buildBoats(rand) {
@@ -824,20 +884,112 @@
     const h = state.height;
     const gradient = target.createLinearGradient(0, 0, w, h);
     if (settings.nightMode) {
-      gradient.addColorStop(0, "#0a1d22");
-      gradient.addColorStop(0.45, "#173129");
-      gradient.addColorStop(1, "#1b2925");
+      gradient.addColorStop(0, "#0a1b24");
+      gradient.addColorStop(0.46, "#173127");
+      gradient.addColorStop(1, "#2b3026");
     } else {
-      gradient.addColorStop(0, "#6ca66b");
-      gradient.addColorStop(0.5, "#93bf72");
-      gradient.addColorStop(1, "#4e8d68");
+      gradient.addColorStop(0, "#6aa576");
+      gradient.addColorStop(0.42, "#9dbc6e");
+      gradient.addColorStop(0.72, "#b49a68");
+      gradient.addColorStop(1, "#668e6e");
     }
     target.fillStyle = gradient;
     target.fillRect(0, 0, w, h);
 
+    drawEarthLandforms(target);
     drawFields(target);
 
     target.globalAlpha = 1;
+  }
+
+  function drawEarthLandforms(target) {
+    const patches = settings.nightMode
+      ? [
+          [0.18, 0.30, 0.23, 0.18, -0.35, "#253d32", "#445845", 0.45],
+          [0.68, 0.24, 0.28, 0.17, 0.18, "#303a32", "#5a5e4b", 0.42],
+          [0.78, 0.66, 0.25, 0.20, -0.22, "#3a3425", "#695d3c", 0.36],
+          [0.34, 0.76, 0.25, 0.16, 0.10, "#213b38", "#405c55", 0.34]
+        ]
+      : [
+          [0.18, 0.30, 0.23, 0.18, -0.35, "#5f9b69", "#9db472", 0.32],
+          [0.67, 0.23, 0.28, 0.17, 0.18, "#c0b678", "#8ea365", 0.30],
+          [0.78, 0.66, 0.25, 0.20, -0.22, "#b9875d", "#d4bf77", 0.28],
+          [0.33, 0.77, 0.26, 0.17, 0.10, "#4c9373", "#87b786", 0.24],
+          [0.54, 0.48, 0.22, 0.15, 0.42, "#dde2c3", "#a7b789", 0.18]
+        ];
+
+    target.save();
+    for (const patch of patches) {
+      drawTerrainPatch(target, ...patch);
+    }
+    drawLatitudeMarks(target);
+    target.restore();
+  }
+
+  function drawTerrainPatch(target, cxFactor, cyFactor, rxFactor, ryFactor, angle, fill, stroke, alpha) {
+    const cx = state.width * cxFactor;
+    const cy = state.height * cyFactor;
+    const rx = state.width * rxFactor;
+    const ry = state.height * ryFactor;
+    const steps = 18;
+
+    target.save();
+    target.translate(cx, cy);
+    target.rotate(angle);
+    target.globalAlpha = alpha;
+    target.fillStyle = fill;
+    target.beginPath();
+    for (let i = 0; i <= steps; i += 1) {
+      const a = i / steps * TAU;
+      const wobble = 1 + 0.10 * Math.sin(a * 2.8 + cxFactor * 8) + 0.06 * Math.sin(a * 5.1 + cyFactor * 11);
+      const x = Math.cos(a) * rx * wobble;
+      const y = Math.sin(a) * ry * wobble;
+      if (i === 0) {
+        target.moveTo(x, y);
+      } else {
+        target.lineTo(x, y);
+      }
+    }
+    target.closePath();
+    target.fill();
+
+    target.globalAlpha = alpha * 0.74;
+    target.strokeStyle = stroke;
+    target.lineWidth = 1.2;
+    for (let band = 0.42; band < 0.95; band += 0.18) {
+      target.beginPath();
+      for (let i = 0; i <= steps; i += 1) {
+        const a = i / steps * TAU;
+        const wobble = 1 + 0.07 * Math.sin(a * 3.2 + band * 5) + 0.035 * Math.sin(a * 6.0 + cxFactor * 4);
+        const x = Math.cos(a) * rx * band * wobble;
+        const y = Math.sin(a) * ry * band * wobble;
+        if (i === 0) {
+          target.moveTo(x, y);
+        } else {
+          target.lineTo(x, y);
+        }
+      }
+      target.closePath();
+      target.stroke();
+    }
+    target.restore();
+  }
+
+  function drawLatitudeMarks(target) {
+    target.save();
+    target.globalAlpha = settings.nightMode ? 0.09 : 0.13;
+    target.strokeStyle = settings.nightMode ? "#8ba498" : "#f2e8ba";
+    target.lineWidth = 1;
+    target.setLineDash([8, 18]);
+    for (let i = 1; i < 4; i += 1) {
+      const y = state.height * (0.22 + i * 0.18);
+      target.beginPath();
+      target.moveTo(0, y);
+      target.bezierCurveTo(state.width * 0.26, y - state.height * 0.04, state.width * 0.58, y + state.height * 0.04, state.width, y);
+      target.stroke();
+    }
+    target.setLineDash([]);
+    target.restore();
   }
 
   function drawFields(target) {
@@ -873,37 +1025,139 @@
     const w = state.width;
     const h = state.height;
     const water = settings.nightMode ? "#123845" : accentColor(0.78);
+    const deep = settings.nightMode ? "#0c2731" : "#3fa6b4";
     const edge = settings.nightMode ? "#30544e" : "#3f8a6f";
+    const sand = settings.nightMode ? "rgba(109, 101, 70, 0.42)" : "rgba(234, 211, 134, 0.62)";
 
     target.save();
-    target.fillStyle = water;
-    target.strokeStyle = edge;
-    target.lineWidth = 2;
-
-    target.beginPath();
-    target.moveTo(0, h * 0.07);
-    target.bezierCurveTo(w * 0.16, h * 0.03, w * 0.21, h * 0.25, w * 0.37, h * 0.20);
-    target.bezierCurveTo(w * 0.56, h * 0.14, w * 0.60, h * 0.34, w * 0.78, h * 0.28);
-    target.bezierCurveTo(w * 0.92, h * 0.24, w * 0.87, h * 0.04, w, h * 0.12);
-    target.lineTo(w, 0);
-    target.lineTo(0, 0);
-    target.closePath();
-    target.fill();
-    target.stroke();
-
-    target.beginPath();
-    target.moveTo(w * 0.40, h);
-    target.bezierCurveTo(w * 0.45, h * 0.80, w * 0.50, h * 0.83, w * 0.56, h * 0.68);
-    target.bezierCurveTo(w * 0.64, h * 0.49, w * 0.43, h * 0.45, w * 0.51, h * 0.30);
-    target.bezierCurveTo(w * 0.61, h * 0.14, w * 0.80, h * 0.24, w, h * 0.17);
-    target.lineTo(w, h * 0.32);
-    target.bezierCurveTo(w * 0.82, h * 0.36, w * 0.67, h * 0.34, w * 0.61, h * 0.48);
-    target.bezierCurveTo(w * 0.55, h * 0.66, w * 0.71, h * 0.80, w * 0.55, h);
-    target.closePath();
-    target.fill();
-    target.stroke();
-
+    drawNorthCoast(target, deep, water, edge, sand);
+    drawLakeSet(target, water, edge, sand);
+    drawAtlasRiver(target, atlasMainRiverSamples(72), water, edge, sand);
+    drawAtlasRiver(target, atlasTributarySamples(52), water, edge, sand);
     target.restore();
+  }
+
+  function drawNorthCoast(target, deep, water, edge, sand) {
+    const w = state.width;
+    const h = state.height;
+    target.beginPath();
+    target.moveTo(0, 0);
+    target.lineTo(w, 0);
+    target.lineTo(w, atlasCoastlineY(w));
+    for (let i = 64; i >= 0; i -= 1) {
+      const x = w * i / 64;
+      target.lineTo(x, atlasCoastlineY(x));
+    }
+    target.closePath();
+    target.fillStyle = deep;
+    target.fill();
+
+    target.globalAlpha = settings.nightMode ? 0.26 : 0.32;
+    target.strokeStyle = water;
+    target.lineWidth = Math.max(8, atlasMinDim() * 0.024);
+    target.lineCap = "round";
+    target.beginPath();
+    for (let i = 0; i <= 64; i += 1) {
+      const x = w * i / 64;
+      const y = Math.max(h * 0.018, atlasCoastlineY(x) * 0.55);
+      if (i === 0) {
+        target.moveTo(x, y);
+      } else {
+        target.lineTo(x, y);
+      }
+    }
+    target.stroke();
+    target.globalAlpha = 1;
+
+    target.strokeStyle = sand;
+    target.lineWidth = Math.max(1, atlasMinDim() * 0.003);
+    target.beginPath();
+    for (let i = 0; i <= 64; i += 1) {
+      const x = w * i / 64;
+      const y = atlasCoastlineY(x) + atlasMinDim() * 0.004;
+      if (i === 0) {
+        target.moveTo(x, y);
+      } else {
+        target.lineTo(x, y);
+      }
+    }
+    target.stroke();
+
+    target.strokeStyle = edge;
+    target.lineWidth = Math.max(1.2, atlasMinDim() * 0.0035);
+    target.beginPath();
+    for (let i = 0; i <= 64; i += 1) {
+      const x = w * i / 64;
+      const y = atlasCoastlineY(x);
+      if (i === 0) {
+        target.moveTo(x, y);
+      } else {
+        target.lineTo(x, y);
+      }
+    }
+    target.stroke();
+  }
+
+  function atlasMainRiverSamples(count) {
+    const points = [];
+    for (let i = 0; i <= count; i += 1) {
+      const y = state.height * (-0.02 + i / count * 1.06);
+      points.push({ x: atlasMainRiverX(y), y, halfWidth: atlasMainRiverHalfWidth(y) });
+    }
+    return points;
+  }
+
+  function atlasTributarySamples(count) {
+    const points = [];
+    for (let i = 0; i <= count; i += 1) {
+      const x = state.width * (-0.02 + i / count * 0.58);
+      points.push({ x, y: atlasTributaryY(x), halfWidth: atlasTributaryHalfWidth(x) });
+    }
+    return points;
+  }
+
+  function drawAtlasRiver(target, points, water, edge, sand) {
+    target.save();
+    target.lineCap = "round";
+    target.lineJoin = "round";
+    for (let pass = 0; pass < 3; pass += 1) {
+      if (pass === 0) {
+        target.strokeStyle = sand;
+      } else if (pass === 1) {
+        target.strokeStyle = edge;
+      } else {
+        target.strokeStyle = water;
+      }
+      for (let i = 1; i < points.length; i += 1) {
+        const width = points[i - 1].halfWidth + points[i].halfWidth;
+        target.lineWidth = width + (pass === 0 ? atlasMinDim() * 0.012 : pass === 1 ? atlasMinDim() * 0.006 : 0);
+        target.beginPath();
+        target.moveTo(points[i - 1].x, points[i - 1].y);
+        target.lineTo(points[i].x, points[i].y);
+        target.stroke();
+      }
+    }
+    target.restore();
+  }
+
+  function drawLakeSet(target, water, edge, sand) {
+    for (const lake of atlasLakes()) {
+      target.save();
+      target.translate(lake.x, lake.y);
+      target.rotate(lake.angle);
+      target.fillStyle = sand;
+      target.beginPath();
+      target.ellipse(0, 0, lake.rx + atlasMinDim() * 0.006, lake.ry + atlasMinDim() * 0.005, 0, 0, TAU);
+      target.fill();
+      target.fillStyle = water;
+      target.strokeStyle = edge;
+      target.lineWidth = Math.max(1, atlasMinDim() * 0.003);
+      target.beginPath();
+      target.ellipse(0, 0, lake.rx, lake.ry, 0, 0, TAU);
+      target.fill();
+      target.stroke();
+      target.restore();
+    }
   }
 
   function drawRoads(target) {
@@ -1656,20 +1910,31 @@
     const spans = [];
     let current = [];
     const flush = () => {
-      if (current.length > 3) {
+      if (current.length > 1) {
         const metrics = measurePoints(current);
-        if (metrics.length > 34) {
+        if (metrics.length > 8) {
           spans.push({ edgeId: edge.id, points: current, length: metrics.length });
         }
       }
       current = [];
     };
 
-    for (const point of points) {
-      if (isWaterPoint(point)) {
-        current.push(point);
-      } else {
-        flush();
+    for (let i = 1; i < points.length; i += 1) {
+      const a = points[i - 1];
+      const b = points[i];
+      const segmentLength = Math.hypot(b.x - a.x, b.y - a.y);
+      const samples = Math.max(1, Math.ceil(segmentLength / 6));
+      for (let step = 0; step <= samples; step += 1) {
+        if (i > 1 && step === 0) {
+          continue;
+        }
+        const t = step / samples;
+        const point = { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+        if (isWaterPoint(point)) {
+          current.push(point);
+        } else {
+          flush();
+        }
       }
     }
     flush();
@@ -1678,10 +1943,11 @@
 
   function isWaterPoint(point) {
     const w = state.width;
-    const h = state.height;
-    const topHarbor = point.y < h * 0.24 || (point.x > w * 0.62 && point.y < h * 0.33);
-    const river = point.x > w * 0.40 && point.x < w * 0.63 && point.y > h * 0.20;
-    return topHarbor || river;
+    const coast = point.y < atlasCoastlineY(point.x);
+    const mainRiver = Math.abs(point.x - atlasMainRiverX(point.y)) < atlasMainRiverHalfWidth(point.y);
+    const tributary = point.x > -w * 0.03 && point.x < w * 0.58 && Math.abs(point.y - atlasTributaryY(point.x)) < atlasTributaryHalfWidth(point.x);
+    const lake = atlasLakes().some((item) => pointInLake(point, item));
+    return coast || mainRiver || tributary || lake;
   }
 
   function isNearRoadCrossing(x, y, conflicts, radius = 28) {
