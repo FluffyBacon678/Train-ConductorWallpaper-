@@ -289,7 +289,8 @@
       const y = h * (0.09 + i * 0.19);
       mainRiverStops.push({ x: atlasMainRiverX(y), y });
     }
-    const tributaryStops = [0.05, 0.18, 0.32, 0.46, 0.55].map((xFactor) => {
+    const tributaryEnd = atlasTributaryConfluenceX() / w;
+    const tributaryStops = [0.05, 0.18, 0.32, Math.max(0.36, tributaryEnd - 0.035), tributaryEnd].map((xFactor) => {
       const x = w * xFactor;
       return { x, y: atlasTributaryY(x) };
     });
@@ -372,6 +373,22 @@
   function atlasTributaryHalfWidth(x) {
     const t = clamp(x / Math.max(1, state.width), 0, 1);
     return atlasMinDim() * (0.008 + 0.004 * Math.sin(t * Math.PI));
+  }
+
+  function atlasTributaryConfluenceX() {
+    const w = Math.max(1, state.width);
+    let bestX = w * 0.48;
+    let bestGap = Infinity;
+    for (let i = 0; i <= 64; i += 1) {
+      const x = w * (0.36 + i / 64 * 0.22);
+      const y = atlasTributaryY(x);
+      const gap = Math.abs(x - (atlasMainRiverX(y) - atlasMainRiverHalfWidth(y) * 0.88));
+      if (gap < bestGap) {
+        bestGap = gap;
+        bestX = x;
+      }
+    }
+    return bestX;
   }
 
   function atlasLakes() {
@@ -1032,8 +1049,8 @@
     target.save();
     drawNorthCoast(target, deep, water, edge, sand);
     drawLakeSet(target, water, edge, sand);
-    drawAtlasRiver(target, atlasMainRiverSamples(72), water, edge, sand);
     drawAtlasRiver(target, atlasTributarySamples(52), water, edge, sand);
+    drawAtlasRiver(target, atlasMainRiverSamples(72), water, edge, sand);
     target.restore();
   }
 
@@ -1109,8 +1126,9 @@
 
   function atlasTributarySamples(count) {
     const points = [];
+    const endX = atlasTributaryConfluenceX();
     for (let i = 0; i <= count; i += 1) {
-      const x = state.width * (-0.02 + i / count * 0.58);
+      const x = lerp(-state.width * 0.02, endX, i / count);
       points.push({ x, y: atlasTributaryY(x), halfWidth: atlasTributaryHalfWidth(x) });
     }
     return points;
@@ -1945,7 +1963,8 @@
     const w = state.width;
     const coast = point.y < atlasCoastlineY(point.x);
     const mainRiver = Math.abs(point.x - atlasMainRiverX(point.y)) < atlasMainRiverHalfWidth(point.y);
-    const tributary = point.x > -w * 0.03 && point.x < w * 0.58 && Math.abs(point.y - atlasTributaryY(point.x)) < atlasTributaryHalfWidth(point.x);
+    const tributaryEnd = atlasTributaryConfluenceX() + atlasTributaryHalfWidth(point.x);
+    const tributary = point.x > -w * 0.03 && point.x < tributaryEnd && Math.abs(point.y - atlasTributaryY(point.x)) < atlasTributaryHalfWidth(point.x);
     const lake = atlasLakes().some((item) => pointInLake(point, item));
     return coast || mainRiver || tributary || lake;
   }
