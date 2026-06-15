@@ -1,0 +1,177 @@
+{
+  "description": "Loop-safe high top-down rail wallpaper with organized station-to-station train routes, signal-style train spacing, narrow roads and rails, separated road/rail/water crossings, boats, bridges, underpasses, tracks that build and dismantle over time, click-influenced construction, dense miniature scenery, weather, traffic, and cinematic effects.",
+  "file": "index.html",
+  "general": {
+    "properties": {
+      "speed": {
+        "order": 0,
+        "text": "Train speed",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 3,
+        "step": 0.1
+      },
+      "traincount": {
+        "order": 1,
+        "text": "Train count",
+        "type": "slider",
+        "value": 20,
+        "min": 1,
+        "max": 36,
+        "step": 1
+      },
+      "stationcount": {
+        "order": 2,
+        "text": "Station count",
+        "type": "slider",
+        "value": 23,
+        "min": 10,
+        "max": 34,
+        "step": 1
+      },
+      "trackdensity": {
+        "order": 3,
+        "text": "World detail",
+        "type": "slider",
+        "value": 1.24,
+        "min": 0.65,
+        "max": 1.7,
+        "step": 0.05
+      },
+      "networkactivity": {
+        "order": 4,
+        "text": "Network activity",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.05
+      },
+      "mouseinfluence": {
+        "order": 5,
+        "text": "Click builds tracks",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.05
+      },
+      "decayspeed": {
+        "order": 6,
+        "text": "Track dismantling",
+        "type": "slider",
+        "value": 0.75,
+        "min": 0,
+        "max": 2,
+        "step": 0.05
+      },
+      "miniaturescale": {
+        "order": 7,
+        "text": "View altitude",
+        "type": "slider",
+        "value": 0.52,
+        "min": 0.42,
+        "max": 0.9,
+        "step": 0.02
+      },
+      "traintheme": {
+        "order": 8,
+        "text": "Train colors",
+        "type": "combo",
+        "value": "classic",
+        "options": [
+          {
+            "label": "Classic",
+            "value": "classic"
+          },
+          {
+            "label": "Cargo",
+            "value": "cargo"
+          },
+          {
+            "label": "Bright",
+            "value": "bright"
+          }
+        ]
+      },
+      "nightmode": {
+        "order": 9,
+        "text": "Night mode",
+        "type": "bool",
+        "value": false
+      },
+      "signalglow": {
+        "order": 10,
+        "text": "Signal glow",
+        "type": "bool",
+        "value": true
+      },
+      "schemecolor": {
+        "order": 11,
+        "text": "Water color",
+        "type": "color",
+        "value": "0.26 0.72 0.76"
+      },
+      "trafficdensity": {
+        "order": 12,
+        "text": "Road traffic",
+        "type": "slider",
+        "value": 1.05,
+        "min": 0,
+        "max": 2,
+        "step": 0.1
+      },
+      "weather": {
+        "order": 13,
+        "text": "Weather",
+        "type": "combo",
+        "value": "clear",
+        "options": [
+          {
+            "label": "Clear",
+            "value": "clear"
+          },
+          {
+            "label": "Rain",
+            "value": "rain"
+          },
+          {
+            "label": "Snow",
+            "value": "snow"
+          }
+        ]
+      },
+      "weatherintensity": {
+        "order": 14,
+        "text": "Weather intensity",
+        "type": "slider",
+        "value": 0.8,
+        "min": 0.1,
+        "max": 1.5,
+        "step": 0.1
+      },
+      "cameradrift": {
+        "order": 15,
+        "text": "Camera drift",
+        "type": "slider",
+        "value": 0.35,
+        "min": 0,
+        "max": 1,
+        "step": 0.05
+      },
+      "cinematicfx": {
+        "order": 16,
+        "text": "Cinematic effects",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 1.5,
+        "step": 0.05
+      }
+    }
+  },
+  "preview": "preview.png",
+  "title": "Rail Drift",
+  "type": "web"
+}
