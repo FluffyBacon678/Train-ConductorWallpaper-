@@ -26,6 +26,7 @@
     boatRoutes: [],
     boats: [],
     scenery: [],
+    yards: [],
     weatherParticles: [],
     constructionTimer: 1.5,
     mouse: { x: 0, y: 0, activeUntil: 0 },
@@ -126,7 +127,7 @@
   }
 
   function trainScale() {
-    return worldScale() * 0.82;
+    return worldScale() * 0.66;
   }
 
   function sceneryScale() {
@@ -171,6 +172,7 @@
 
     buildTerrainDetails();
     buildRailGraph();
+    clearSceneryFromRails();
     buildTrains();
     buildWeather();
     state.backgroundDirty = true;
@@ -205,11 +207,25 @@
     buildBoatRoutes(w, h);
     buildBoats(rand);
 
+    state.yards = makeYardRects();
+
     const count = Math.round((w * h) / 7200 * settings.density);
     state.scenery = [];
     for (let i = 0; i < count; i += 1) {
-      const x = rand() * w;
-      const y = rand() * h;
+      let x = 0;
+      let y = 0;
+      let accepted = false;
+      for (let attempt = 0; attempt < 24; attempt += 1) {
+        x = rand() * w;
+        y = rand() * h;
+        if (canPlaceScenery(x, y)) {
+          accepted = true;
+          break;
+        }
+      }
+      if (!accepted) {
+        continue;
+      }
       const town = x > w * 0.36 && x < w * 0.65 && y > h * 0.30 && y < h * 0.73;
       state.scenery.push({
         type: town && rand() > 0.42 ? "building" : "tree",
@@ -219,6 +235,10 @@
         tone: rand()
       });
     }
+  }
+
+  function clearSceneryFromRails() {
+    state.scenery = state.scenery.filter((item) => !isNearRailPath(item.x, item.y, item.type === "building" ? 24 : 10));
   }
 
   function makeOpenPath(points, samplesPerSegment) {
@@ -290,6 +310,31 @@
     return { points: lanePoints, length: metrics.length, cumulative: metrics.cumulative, speed };
   }
 
+  function makeYardRects() {
+    const footprint = clamp(0.56 + worldScale() * 0.35, 0.68, 0.94);
+    return [
+      makeRectZone(0.14, 0.25, 0.21 * footprint, 0.14 * footprint),
+      makeRectZone(0.68, 0.24, 0.28 * footprint, 0.17 * footprint),
+      makeRectZone(0.48, 0.68, 0.18 * footprint, 0.14 * footprint)
+    ];
+  }
+
+  function makeRectZone(x, y, w, h) {
+    return {
+      x: state.width * x,
+      y: state.height * y,
+      w: state.width * w,
+      h: state.height * h
+    };
+  }
+
+  function canPlaceScenery(x, y) {
+    if (isWaterPoint({ x, y }) || isNearAnyYard(x, y, 18)) {
+      return false;
+    }
+    return state.scenery.every((item) => Math.hypot(item.x - x, item.y - y) > 10);
+  }
+
   function buildBoats(rand) {
     const count = clamp(Math.round(2 + settings.cinematicFx * 3), 1, 7);
     const colors = ["#f4e5b5", "#b54a3f", "#2f6a91", "#e7d078", "#2f7d63"];
@@ -344,6 +389,9 @@
         state: "active",
         progress: 1,
         group: "core-ring",
+        allowProtected: true,
+        allowLongBridge: true,
+        avoidCrossings: false,
         bend: ringBend(a, b, center)
       });
     }
@@ -361,14 +409,20 @@
         stationById(ringIds[positiveModulo(anchorIndex + neighborOffset, ringCount)])
       ].filter(Boolean);
       const group = `core-pocket-${i}`;
+      const added = [];
       for (const anchor of anchors) {
-        addEdge(stationId, anchor.id, {
+        const edge = addEdge(stationId, anchor.id, {
           core: true,
           state: "active",
           progress: 1,
           group,
           bend: softBend(stationById(stationId), anchor, 0.08 + rand() * 0.05)
         });
+        if (edge) added.push(edge);
+      }
+      if (added.length < 2) {
+        state.edges = state.edges.filter((edge) => edge.group !== group);
+        state.stations = state.stations.filter((station) => station.id !== stationId);
       }
     }
 
@@ -452,6 +506,9 @@
 
     const id = `edge-${state.edges.length}-${aId}-${bId}`;
     const points = makeEdgePoints(a, b, options.bend ?? 0);
+    if (!edgeIsAcceptable(points, a, b, options)) {
+      return null;
+    }
     const metrics = measurePoints(points);
     const edge = {
       id,
@@ -470,6 +527,95 @@
     };
     state.edges.push(edge);
     return edge;
+  }
+
+  function edgeIsAcceptable(points, a, b, options) {
+    const minSpan = Math.min(state.width, state.height);
+    const allowProtected = Boolean(options.allowProtected);
+    const allowLongBridge = Boolean(options.allowLongBridge);
+    const avoidCrossings = options.avoidCrossings !== false;
+
+    if (!allowProtected && pathHitsProtectedZone(points, a, b)) {
+      return false;
+    }
+
+    if (!allowLongBridge && longestWaterRun(points) > minSpan * 0.16) {
+      return false;
+    }
+
+    if (avoidCrossings && hasMessyRailConflict(points, a, b)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function pathHitsProtectedZone(points, a, b) {
+    return pathHitsYard(points, a, b) || pathHitsBuilding(points, a, b);
+  }
+
+  function pathHitsYard(points, a, b) {
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const point = points[i];
+      if (Math.hypot(point.x - a.x, point.y - a.y) < 24 || Math.hypot(point.x - b.x, point.y - b.y) < 24) {
+        continue;
+      }
+      if (isNearAnyYard(point.x, point.y, 12)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function pathHitsBuilding(points, a, b) {
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const point = points[i];
+      if (Math.hypot(point.x - a.x, point.y - a.y) < 24 || Math.hypot(point.x - b.x, point.y - b.y) < 24) {
+        continue;
+      }
+      if (isNearBuilding(point.x, point.y, 18)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function longestWaterRun(points) {
+    let longest = 0;
+    let current = 0;
+    for (let i = 1; i < points.length; i += 1) {
+      const segment = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+      if (isWaterPoint(points[i]) || isWaterPoint(points[i - 1])) {
+        current += segment;
+        longest = Math.max(longest, current);
+      } else {
+        current = 0;
+      }
+    }
+    return longest;
+  }
+
+  function hasMessyRailConflict(points, a, b) {
+    for (const edge of state.edges) {
+      const sharedEndpoint = edge.a === a.id || edge.b === a.id || edge.a === b.id || edge.b === b.id;
+      for (let i = 1; i < points.length; i += 1) {
+        const p0 = points[i - 1];
+        const p1 = points[i];
+        for (let j = 1; j < edge.points.length; j += 1) {
+          const q0 = edge.points[j - 1];
+          const q1 = edge.points[j];
+          const hit = segmentIntersection(p0, p1, q0, q1);
+          if (hit && !sharedEndpoint && !nearAnyStation(hit, 30)) {
+            return true;
+          }
+
+          if (!sharedEndpoint && segmentMidDistance(p0, p1, q0, q1) < gauge() * 2.6 && segmentAngleGap(p0, p1, q0, q1) < 0.22) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   function makeEdgePoints(a, b, bend) {
@@ -522,6 +668,62 @@
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
+  function isNearAnyYard(x, y, padding = 0) {
+    return state.yards.some((yard) => (
+      x > yard.x - yard.w / 2 - padding &&
+      x < yard.x + yard.w / 2 + padding &&
+      y > yard.y - yard.h / 2 - padding &&
+      y < yard.y + yard.h / 2 + padding
+    ));
+  }
+
+  function isNearBuilding(x, y, radius = 16) {
+    return state.scenery.some((item) => item.type === "building" && Math.hypot(item.x - x, item.y - y) < radius + item.scale * 8);
+  }
+
+  function isNearRailPath(x, y, radius) {
+    const point = { x, y };
+    for (const edge of state.edges) {
+      if (edge.state === "dismantling") {
+        continue;
+      }
+      for (let i = 1; i < edge.points.length; i += 1) {
+        if (distanceToSegment(point, edge.points[i - 1], edge.points[i]) < radius) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function distanceToSegment(point, a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) {
+      return Math.hypot(point.x - a.x, point.y - a.y);
+    }
+    const t = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq, 0, 1);
+    return Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t));
+  }
+
+  function nearAnyStation(point, radius) {
+    return state.stations.some((station) => Math.hypot(station.x - point.x, station.y - point.y) < radius);
+  }
+
+  function segmentMidDistance(a, b, c, d) {
+    const p = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const q = { x: (c.x + d.x) / 2, y: (c.y + d.y) / 2 };
+    return Math.hypot(p.x - q.x, p.y - q.y);
+  }
+
+  function segmentAngleGap(a, b, c, d) {
+    const angleA = Math.atan2(b.y - a.y, b.x - a.x);
+    const angleB = Math.atan2(d.y - c.y, d.x - c.x);
+    const diff = Math.abs(Math.atan2(Math.sin(angleA - angleB), Math.cos(angleA - angleB)));
+    return Math.min(diff, Math.abs(Math.PI - diff));
+  }
+
   function hasEdge(aId, bId) {
     return state.edges.some((edge) => (edge.a === aId && edge.b === bId) || (edge.a === bId && edge.b === aId));
   }
@@ -559,8 +761,8 @@
         path: [],
         pathIndex: 0,
         distance: 0,
-        wait: 0.4 + (i % 5) * 0.25,
-        speed: 30 + (i % 6) * 4,
+        wait: 0.35 + (i % 5) * 0.18,
+        speed: 19 + (i % 6) * 2.4,
         speedFactor: 1,
         signalHold: false,
         signalWait: 0,
@@ -771,21 +973,12 @@
   }
 
   function drawYards(target) {
-    const yards = [
-      { x: 0.14, y: 0.25, w: 0.21, h: 0.14 },
-      { x: 0.68, y: 0.24, w: 0.28, h: 0.17 },
-      { x: 0.48, y: 0.68, w: 0.18, h: 0.14 }
-    ];
     const colors = settings.nightMode ? ["#5f2c33", "#304459", "#4d4730", "#2d4d42"] : ["#c94f40", "#2f6a91", "#d2a64a", "#397c61"];
-    const footprint = clamp(0.56 + worldScale() * 0.35, 0.68, 0.94);
     const crateW = 24 * worldScale();
     const crateH = 8 * worldScale();
 
-    for (const yard of yards) {
-      const x = state.width * yard.x;
-      const y = state.height * yard.y;
-      const w = state.width * yard.w * footprint;
-      const h = state.height * yard.h * footprint;
+    for (const yard of state.yards) {
+      const { x, y, w, h } = yard;
       roundedRect(target, x - w / 2, y - h / 2, w, h, 6);
       target.fillStyle = settings.nightMode ? "#303235" : "#a6a191";
       target.fill();
@@ -1107,7 +1300,7 @@
           if (station) {
             station.pulse = 1;
           }
-          train.wait = 1.2 + Math.random() * 2.2;
+          train.wait = 0.8 + Math.random() * 1.3;
           train.path = [];
           train.pathIndex = 0;
           train.destinationId = null;
@@ -1119,7 +1312,7 @@
   function trainBlockState(train, edge, step) {
     const own = edgeCoordinate(train, edge, step);
     const stopGap = trainStopGap(train);
-    const slowGap = stopGap * 2.65;
+    const slowGap = stopGap * 2.15;
     let nearestGap = Infinity;
 
     for (const other of state.trains) {
@@ -1133,22 +1326,22 @@
       }
 
       const otherPosition = edgeCoordinate(other, edge, otherStep);
+      if (otherPosition.lane !== own.lane) {
+        continue;
+      }
+
       const ahead = (otherPosition.position - own.position) * own.direction;
-      if (own.direction === otherPosition.direction) {
-        if (ahead > 0) {
-          nearestGap = Math.min(nearestGap, ahead);
-        }
-      } else if (ahead > -stopGap * 0.35) {
-        const physicalGap = Math.abs(otherPosition.position - own.position);
-        const shouldYield = trainNumericId(train) > trainNumericId(other) || train.distance < stopGap * 0.55;
-        if (shouldYield) {
-          nearestGap = Math.min(nearestGap, physicalGap * 0.75);
-        }
+      if (ahead > 0) {
+        nearestGap = Math.min(nearestGap, ahead);
       }
     }
 
     if (!Number.isFinite(nearestGap)) {
       return { factor: 1, hold: false };
+    }
+
+    if (train.signalWait > trainReleaseTime(train)) {
+      return { factor: 0.38, hold: false, released: true };
     }
 
     if (nearestGap <= stopGap) {
@@ -1160,7 +1353,12 @@
   }
 
   function edgeEntryBlocked(train, nextStep, nextEdge) {
+    if (train.signalWait > trainReleaseTime(train)) {
+      return false;
+    }
+
     const enteringDirection = nextEdge.a === nextStep.from ? 1 : -1;
+    const enteringLane = laneForStep(nextEdge, nextStep);
     const stopGap = trainStopGap(train);
     for (const other of state.trains) {
       if (other === train || other.wait > 0) {
@@ -1173,8 +1371,12 @@
       }
 
       const otherPosition = edgeCoordinate(other, nextEdge, otherStep);
+      if (otherPosition.lane !== enteringLane) {
+        continue;
+      }
+
       const distanceFromEntry = enteringDirection === 1 ? otherPosition.position : nextEdge.length - otherPosition.position;
-      if (otherPosition.direction !== enteringDirection || distanceFromEntry < stopGap * 2.2) {
+      if (distanceFromEntry < stopGap * 1.55) {
         return true;
       }
     }
@@ -1185,12 +1387,21 @@
     const direction = edge.a === step.from ? 1 : -1;
     return {
       direction,
+      lane: laneForStep(edge, step),
       position: direction === 1 ? train.distance : edge.length - train.distance
     };
   }
 
   function trainStopGap(train) {
-    return 28 + train.cars * 5.5 * trainScale();
+    return 18 + train.cars * 4.2 * trainScale();
+  }
+
+  function trainReleaseTime(train) {
+    return 1.45 + (trainNumericId(train) % 5) * 0.22;
+  }
+
+  function laneForStep(edge, step) {
+    return edge.a === step.from ? 0 : 1;
   }
 
   function trainNumericId(train) {
@@ -1677,10 +1888,10 @@
       }
 
       const dir = edge.a === step.from ? 1 : -1;
-      drawTrainHeadlight(target, train, edge, dir);
+      drawTrainHeadlight(target, train, edge, step, dir);
       const s = trainScale();
-      const carGap = 8.5 * s;
-      const carLength = 22 * s;
+      const carGap = 7 * s;
+      const carLength = 18 * s;
       drawTrainRibbon(target, train, carLength, carGap);
       for (let i = train.cars; i >= 0; i -= 1) {
         const offset = i === 0 ? 0 : i * (carLength + carGap);
@@ -1688,7 +1899,7 @@
         if (!pos) {
           continue;
         }
-        drawMiniCar(target, pos.x, pos.y, pos.angle, i === 0 ? carLength * 1.2 : carLength, i === 0 ? train.color : carriageColor(train, i), i === 0, train.trim);
+        drawMiniCar(target, pos.x, pos.y, pos.angle, i === 0 ? carLength * 1.16 : carLength, i === 0 ? train.color : carriageColor(train, i), i === 0, train.trim);
       }
     }
   }
@@ -1709,7 +1920,7 @@
     target.lineCap = "round";
     target.lineJoin = "round";
     target.strokeStyle = "#080b0e";
-    target.lineWidth = Math.max(1.5, 4.1 * trainScale());
+    target.lineWidth = Math.max(1.05, 3.1 * trainScale());
     target.beginPath();
     target.moveTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i += 1) {
@@ -1717,7 +1928,7 @@
     }
     target.stroke();
     target.strokeStyle = colorWithAlpha(train.color, 0.88);
-    target.lineWidth = Math.max(0.9, 2.1 * trainScale());
+    target.lineWidth = Math.max(0.65, 1.45 * trainScale());
     target.stroke();
     target.restore();
   }
@@ -1733,7 +1944,7 @@
       station.x + Math.cos(angle) * 10 * trainScale(),
       station.y + Math.sin(angle) * 6 * trainScale(),
       angle,
-      22 * trainScale(),
+      18 * trainScale(),
       train.color,
       true,
       train.trim
@@ -1755,14 +1966,26 @@
       return null;
     }
     const dir = edge.a === step.from ? 1 : -1;
-    return pointAt(edge, clamp(d, 0, edge.length), dir);
+    return trainPointAt(edge, clamp(d, 0, edge.length), step, dir);
   }
 
-  function drawTrainHeadlight(target, train, edge, dir) {
+  function trainPointAt(edge, distance, step, dir) {
+    const pos = pointAt(edge, distance, dir);
+    const physicalAngle = edge.a === step.from ? pos.angle : pos.angle - Math.PI;
+    const side = laneForStep(edge, step) === 0 ? -1 : 1;
+    const offset = side * gauge() * 0.78;
+    return {
+      x: pos.x + Math.cos(physicalAngle + Math.PI / 2) * offset,
+      y: pos.y + Math.sin(physicalAngle + Math.PI / 2) * offset,
+      angle: pos.angle
+    };
+  }
+
+  function drawTrainHeadlight(target, train, edge, step, dir) {
     if (!settings.nightMode && settings.weather === "clear") {
       return;
     }
-    const pos = pointAt(edge, train.distance, dir);
+    const pos = trainPointAt(edge, train.distance, step, dir);
     const s = trainScale();
     target.save();
     target.translate(pos.x, pos.y);
@@ -1783,27 +2006,27 @@
 
   function drawMiniCar(target, x, y, angle, length, color, locomotive, trim) {
     const s = trainScale();
-    const width = (locomotive ? 7.4 : 6.2) * s;
+    const width = (locomotive ? 5.4 : 4.4) * s;
     target.save();
     target.translate(x, y);
     target.rotate(angle);
     target.shadowColor = colorWithAlpha("#000000", settings.nightMode ? 0.4 : 0.2);
-    target.shadowBlur = (settings.nightMode ? 6 : 2) * s;
-    target.shadowOffsetY = 1.5 * s;
-    roundedRect(target, -length / 2, -width / 2, length, width, 1.8 * s);
+    target.shadowBlur = (settings.nightMode ? 4 : 1.2) * s;
+    target.shadowOffsetY = 0.9 * s;
+    roundedRect(target, -length / 2, -width / 2, length, width, 1.3 * s);
     target.fillStyle = "#16191e";
     target.fill();
-    roundedRect(target, -length / 2 + 1 * s, -width / 2 + 1 * s, length - 2 * s, width - 2 * s, 1.3 * s);
+    roundedRect(target, -length / 2 + 0.65 * s, -width / 2 + 0.65 * s, length - 1.3 * s, width - 1.3 * s, 0.9 * s);
     target.fillStyle = color;
     target.fill();
     target.shadowBlur = 0;
-    target.fillStyle = colorWithAlpha("#ffffff", settings.nightMode ? 0.22 : 0.35);
-    target.fillRect(-length * 0.25, -width * 0.25, length * 0.5, width * 0.18);
+    target.fillStyle = colorWithAlpha("#ffffff", settings.nightMode ? 0.14 : 0.20);
+    target.fillRect(-length * 0.22, -width * 0.22, length * 0.44, Math.max(0.55, width * 0.12));
     if (locomotive) {
       target.fillStyle = trim;
-      target.fillRect(length * 0.24, -width / 2 + 0.8 * s, 2.5 * s, width - 1.6 * s);
+      target.fillRect(length * 0.24, -width / 2 + 0.55 * s, 1.6 * s, width - 1.1 * s);
       target.fillStyle = settings.nightMode ? "#ffe18a" : "#dff3ff";
-      target.fillRect(length * 0.36, -1.2 * s, 2.2 * s, 2.4 * s);
+      target.fillRect(length * 0.37, -0.75 * s, 1.4 * s, 1.5 * s);
     }
     target.restore();
   }
@@ -2124,6 +2347,7 @@
     const routeEdges = routed.map((train) => train.path.length);
     const waits = state.trains.map((train) => train.wait);
     const trainDistances = routed.map((train) => train.distance);
+    const railQuality = railQualityReport(active);
     const degrees = new Map();
     for (const edge of active) {
       degrees.set(edge.a, (degrees.get(edge.a) || 0) + 1);
@@ -2151,8 +2375,65 @@
       maxRouteLength: Number(Math.max(0, ...routeLengths).toFixed(1)),
       roadUnderpasses: conflicts.railRoad.length,
       railWaterBridges: conflicts.waterSpans.length,
+      longWaterSpans: railQuality.longWaterSpans,
+      sceneryOnWater: railQuality.sceneryOnWater,
+      railsNearBuildings: railQuality.railsNearBuildings,
+      railsNearYards: railQuality.railsNearYards,
+      messyRailConflicts: railQuality.messyRailConflicts,
       boats: state.boats.length
     };
+  }
+
+  function railQualityReport(activeEdges) {
+    let longWaterSpans = 0;
+    let railsNearBuildings = 0;
+    let railsNearYards = 0;
+    let messyRailConflicts = 0;
+    const maxBridge = Math.min(state.width, state.height) * 0.16;
+
+    for (const edge of activeEdges) {
+      if (longestWaterRun(edge.points) > maxBridge && edge.group !== "core-ring") {
+        longWaterSpans += 1;
+      }
+      if (pathHitsBuilding(edge.points, stationById(edge.a) || edge.points[0], stationById(edge.b) || edge.points[edge.points.length - 1])) {
+        railsNearBuildings += 1;
+      }
+      if (pathHitsYard(edge.points, stationById(edge.a) || edge.points[0], stationById(edge.b) || edge.points[edge.points.length - 1])) {
+        railsNearYards += 1;
+      }
+    }
+
+    for (let i = 0; i < activeEdges.length; i += 1) {
+      for (let j = i + 1; j < activeEdges.length; j += 1) {
+        if (edgesHaveMessyConflict(activeEdges[i], activeEdges[j])) {
+          messyRailConflicts += 1;
+        }
+      }
+    }
+
+    return {
+      longWaterSpans,
+      railsNearBuildings,
+      railsNearYards,
+      messyRailConflicts,
+      sceneryOnWater: state.scenery.filter((item) => isWaterPoint(item)).length
+    };
+  }
+
+  function edgesHaveMessyConflict(aEdge, bEdge) {
+    const sharedEndpoint = aEdge.a === bEdge.a || aEdge.a === bEdge.b || aEdge.b === bEdge.a || aEdge.b === bEdge.b;
+    if (sharedEndpoint) {
+      return false;
+    }
+    for (let i = 1; i < aEdge.points.length; i += 1) {
+      for (let j = 1; j < bEdge.points.length; j += 1) {
+        const hit = segmentIntersection(aEdge.points[i - 1], aEdge.points[i], bEdge.points[j - 1], bEdge.points[j]);
+        if (hit && !nearAnyStation(hit, 30)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   function updateDebugReport() {
@@ -2280,6 +2561,9 @@
   window.addEventListener("pointerdown", handlePointerDown);
   applyPreviewParameters();
   resize();
+  renderBackground();
+  updateDebugReport();
+  drawFrame();
   requestAnimationFrame(update);
   setInterval(() => {
     const now = performance.now();
